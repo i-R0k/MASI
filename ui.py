@@ -1,10 +1,9 @@
-import sys
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+    QWidget, QVBoxLayout, QHBoxLayout, 
     QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup
 )
 from PyQt5.QtGui import (
-    QPainter, QPen, QFont, QLinearGradient, QColor, QBrush, QPainterPath
+    QPainter, QPen, QFont, QColor, QPainterPath
 )
 from PyQt5.QtCore import Qt, QRectF, QPointF
 
