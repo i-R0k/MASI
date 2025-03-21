@@ -160,8 +160,9 @@ class UnitermWidget(QWidget):
         return rect.height()
 
 class MainWindow(QWidget):
-    def __init__(self):
-        super(MainWindow, self).__init__()
+    def __init__(self, db, parent=None):
+        super(MainWindow, self).__init__(parent)
+        self.db = db
         self.setWindowTitle("Sekwencja i Zrównoleglanie - rysowanie po naciśnięciu przycisku")
         self.resize(900, 600)
 
@@ -230,10 +231,10 @@ class MainWindow(QWidget):
         # Na koniec dołącz ten layout do głównego layoutu okna
         layout.addLayout(bottomLayout)
 
-
         # Zdarzenia
         self.seqButton.clicked.connect(self.drawSequenceWithArcLine)
         self.parButton.clicked.connect(self.drawParallel)
+        self.saveButton.clicked.connect(self.onSave)
 
         # Styl
         self.setStyleSheet("""
@@ -305,3 +306,21 @@ class MainWindow(QWidget):
         self.unitermWidget.shouldDrawLine = True
         self.updateUnitermData()
         self.unitermWidget.update()
+
+    def onSave(self):
+        # Pobierz dane z pól
+        name = self.nameEdit.text().strip()
+        description = self.descEdit.text().strip()
+        sA = self.sAEdit.text().strip()
+        sB = self.sBEdit.text().strip()
+        sOp = ";" if self.semicolonRadio.isChecked() else ","
+        # Ustal domyślną nazwę, jeśli pole puste
+        if not name:
+            name = "Brak nazwy"
+        # Wstaw rekord do bazy danych
+        from database import DatabaseManager
+        db = DatabaseManager()
+        db.insert_uniterm(name, description, sA, sOp, sB)
+        # Wyczyść pola
+        self.nameEdit.clear()
+        self.descEdit.clear()
