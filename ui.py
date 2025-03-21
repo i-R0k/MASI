@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup
+    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
@@ -164,25 +164,46 @@ class MainWindow(QWidget):
         super(MainWindow, self).__init__(parent)
         self.db = db
         self.setWindowTitle("Sekwencja i Zrównoleglanie - rysowanie po naciśnięciu przycisku")
-        self.resize(900, 600)
+        self.resize(1080, 720)
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # GŁÓWNY layout poziomy – podział na lewą i prawą kolumnę
+        mainLayout = QHBoxLayout(self)
+        mainLayout.setSpacing(15)
+        mainLayout.setContentsMargins(20, 20, 20, 20)
 
-        # Pola wprowadzania
+        # ----- Lewa kolumna: lista rekordów i przyciski "Odśwież"/"Usuń" -----
+        leftLayout = QVBoxLayout()
+        self.listWidget = QListWidget()
+        leftLayout.addWidget(QLabel("Lista zapisanych wyrażeń:"))
+        leftLayout.addWidget(self.listWidget)
+
+        # Przyciski pod listą
+        leftBtnLayout = QHBoxLayout()
+        self.refreshBtn = QPushButton("Odśwież")
+        self.deleteBtn = QPushButton("Usuń")
+        leftBtnLayout.addWidget(self.refreshBtn)
+        leftBtnLayout.addWidget(self.deleteBtn)
+        leftLayout.addLayout(leftBtnLayout)
+
+        leftContainer = QWidget()
+        leftContainer.setLayout(leftLayout)
+        # Lewa kolumna ma stałą (mniejszą) szerokość
+        mainLayout.addWidget(leftContainer, stretch=0)
+
+        # ----- Prawa kolumna: reszta interfejsu -----
+        rightLayout = QVBoxLayout()
+
+        # Panel wejściowy: sA, operator i sB
         inputLayout = QHBoxLayout()
-        self.sAEdit = QLineEdit(self)
+        self.sAEdit = QLineEdit()
         self.sAEdit.setPlaceholderText("Wprowadź sA")
-
         self.semicolonRadio = QRadioButton(";")
         self.commaRadio = QRadioButton(",")
         self.operatorGroup = QButtonGroup(self)
         self.operatorGroup.addButton(self.semicolonRadio)
         self.operatorGroup.addButton(self.commaRadio)
         self.semicolonRadio.setChecked(True)
-
-        self.sBEdit = QLineEdit(self)
+        self.sBEdit = QLineEdit()
         self.sBEdit.setPlaceholderText("Wprowadź sB")
 
         inputLayout.addWidget(QLabel("sA:"))
@@ -192,45 +213,41 @@ class MainWindow(QWidget):
         inputLayout.addWidget(self.commaRadio)
         inputLayout.addWidget(QLabel("sB:"))
         inputLayout.addWidget(self.sBEdit)
-        layout.addLayout(inputLayout)
+        rightLayout.addLayout(inputLayout)
 
-        # Przyciski
+        # Panel przycisków trybu rysowania
         btnLayout = QHBoxLayout()
         self.seqButton = QPushButton("Sekwencjonuj")
         self.parButton = QPushButton("Zrównolegnij")
         btnLayout.addWidget(self.seqButton)
         btnLayout.addWidget(self.parButton)
-        layout.addLayout(btnLayout)
+        rightLayout.addLayout(btnLayout)
 
         # Widget rysujący
         self.unitermWidget = UnitermWidget(self)
         self.unitermWidget.setMinimumHeight(400)
-        layout.addWidget(self.unitermWidget)
+        rightLayout.addWidget(self.unitermWidget)
 
-        # Stwórz dodatkowy layout na dole okna
+        # Dolny pasek: pola "Nazwa" i "Opis" oraz przycisk "Zapisz"
         bottomLayout = QHBoxLayout()
-        
-        # Pole do wprowadzania nazwy
         self.nameEdit = QLineEdit()
         self.nameEdit.setPlaceholderText("Nazwa")
-        
-        # Pole do wprowadzania opisu
         self.descEdit = QLineEdit()
         self.descEdit.setPlaceholderText("Opis")
-        
-        # Przycisk "Zapisz"
         self.saveButton = QPushButton("Zapisz")
-        
-        # Dodaj kontrolki do bottomLayout
+
         bottomLayout.addWidget(QLabel("Nazwa:"))
         bottomLayout.addWidget(self.nameEdit)
         bottomLayout.addWidget(QLabel("Opis:"))
         bottomLayout.addWidget(self.descEdit)
         bottomLayout.addWidget(self.saveButton)
-        
-        # Na koniec dołącz ten layout do głównego layoutu okna
-        layout.addLayout(bottomLayout)
+        rightLayout.addLayout(bottomLayout)
 
+        rightContainer = QWidget()
+        rightContainer.setLayout(rightLayout)
+        # Prawa kolumna zajmuje całą pozostałą przestrzeń
+        mainLayout.addWidget(rightContainer, stretch=1)
+        
         # Zdarzenia
         self.seqButton.clicked.connect(self.drawSequenceWithArcLine)
         self.parButton.clicked.connect(self.drawParallel)
@@ -271,7 +288,8 @@ class MainWindow(QWidget):
                 color: #212121;
             }
         """)
-        self.setLayout(layout)
+        # Ustawienie głównego layoutu
+        self.setLayout(mainLayout)
 
     def updateUnitermData(self):
         self.unitermWidget.sA = self.sAEdit.text()
