@@ -206,6 +206,31 @@ class MainWindow(QWidget):
         self.unitermWidget.setMinimumHeight(400)
         layout.addWidget(self.unitermWidget)
 
+        # Stwórz dodatkowy layout na dole okna
+        bottomLayout = QHBoxLayout()
+        
+        # Pole do wprowadzania nazwy
+        self.nameEdit = QLineEdit()
+        self.nameEdit.setPlaceholderText("Nazwa")
+        
+        # Pole do wprowadzania opisu
+        self.descEdit = QLineEdit()
+        self.descEdit.setPlaceholderText("Opis")
+        
+        # Przycisk "Zapisz"
+        self.saveButton = QPushButton("Zapisz")
+        
+        # Dodaj kontrolki do bottomLayout
+        bottomLayout.addWidget(QLabel("Nazwa:"))
+        bottomLayout.addWidget(self.nameEdit)
+        bottomLayout.addWidget(QLabel("Opis:"))
+        bottomLayout.addWidget(self.descEdit)
+        bottomLayout.addWidget(self.saveButton)
+        
+        # Na koniec dołącz ten layout do głównego layoutu okna
+        layout.addLayout(bottomLayout)
+
+
         # Zdarzenia
         self.seqButton.clicked.connect(self.drawSequenceWithArcLine)
         self.parButton.clicked.connect(self.drawParallel)
