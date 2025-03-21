@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem, QStyle
+    QLineEdit, QLabel, QPushButton, QRadioButton, 
+    QButtonGroup, QListWidget, QListWidgetItem, QStyle,
+    QInputDialog
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
@@ -390,36 +392,51 @@ class MainWindow(QWidget):
 
     def refreshList(self):
         self.listWidget.clear()
-        rows = self.db.fetch_all_uniterms()  # [(id, name, sOp), ...]
-
-        for (record_id, name, sOp) in rows:
+        # Zakładamy, że fetch_all_uniterms() zwraca rekordy w formacie (id, name, description, sOp)
+        rows = self.db.fetch_all_uniterms()
+        for (record_id, name, description, sOp) in rows:
             # 1. Tworzymy pusty QListWidgetItem
             listItem = QListWidgetItem()
+            # Ustaw tooltip z opisem
+            listItem.setToolTip(description)
             self.listWidget.addItem(listItem)
-
-            # 2. Tworzymy własny widget
+    
+            # 2. Tworzymy nasz custom widget (RecordItemWidget) z nazwą rekordu
             itemWidget = RecordItemWidget(record_id, name)
-
+    
             # 3. Podpinamy sygnały przycisków do metod MainWindow
             itemWidget.renameButton.clicked.connect(lambda _, rid=record_id: self.onRename(rid))
             itemWidget.openButton.clicked.connect(lambda _, rid=record_id: self.onOpen(rid))
             itemWidget.deleteButton.clicked.connect(lambda _, rid=record_id: self.onDelete(rid))
-
-            # 4. Osadzamy widget w wierszu listy
+    
+            # 4. Ustawiamy nasz custom widget w wierszu listy
             self.listWidget.setItemWidget(listItem, itemWidget)
-
-            # 5. (Opcjonalnie) dopasowujemy wysokość wiersza do widgetu
             listItem.setSizeHint(itemWidget.sizeHint())
 
+
     def onRename(self, record_id):
-        # np. zapytaj o nową nazwę w QInputDialog
-        # zaktualizuj w bazie (UPDATE)
-        self.refreshList()
-    
+        # Zapytaj użytkownika o nową nazwę przy użyciu QInputDialog
+        new_name, ok = QInputDialog.getText(self, "Zmień nazwę", "Podaj nową nazwę:")
+        if ok and new_name:
+            # Aktualizujemy rekord w bazie (załóżmy, że update_uniterm_name jest zaimplementowane)
+            self.db.update_uniterm_name(record_id, new_name)
+            self.refreshList()
+
     def onOpen(self, record_id):
-        # wczytanie do pól sA, sB, ewentualnie rysowanie, itp.
-        self.refreshList()
-    
+        # Pobierz rekord z bazy danych
+        record = self.db.fetch_uniterm_by_id(record_id)
+        if record:
+            name, description, sA, sOp, sB = record
+            # Wypełnij pola formularza
+            self.nameEdit.setText(name)
+            self.descEdit.setText(description)
+            self.sAEdit.setText(sA)
+            if sOp == ";":
+                self.semicolonRadio.setChecked(True)
+            else:
+                self.commaRadio.setChecked(True)
+            self.sBEdit.setText(sB)
+
     def onDelete(self, record_id):
         self.db.delete_uniterm(record_id)
         self.refreshList()

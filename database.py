@@ -46,11 +46,19 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
+    def update_uniterm_name(self, record_id, new_name):
+        conn = self.get_connection()
+        c = conn.cursor()
+        c.execute("UPDATE uniterm SET name=? WHERE id=?", (new_name, record_id))
+        conn.commit()
+        conn.close()
+
+
     def fetch_all_uniterms(self):
         """Pobiera wszystkie rekordy z tabeli uniterm."""
         conn = self.get_connection()
         c = conn.cursor()
-        c.execute("SELECT id, name, sOp FROM uniterm ORDER BY id DESC")
+        c.execute("SELECT id, name, description, sOp FROM uniterm ORDER BY id DESC")
         rows = c.fetchall()
         conn.close()
         return rows
