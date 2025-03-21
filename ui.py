@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem
+    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem, QStyle
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
 )
-from PyQt5.QtCore import Qt, QRectF, QPointF
+from PyQt5.QtCore import Qt, QRectF, QPointF, QSize
 
 class UnitermWidget(QWidget):
     def __init__(self, parent=None):
@@ -159,6 +159,54 @@ class UnitermWidget(QWidget):
                                     Qt.TextWordWrap, text)
         return rect.height()
 
+class RecordItemWidget(QWidget):
+    def __init__(self, record_id, name, parent=None):
+        super().__init__(parent)
+        self.record_id = record_id
+        self.name = name
+
+        # Ustawienie layoutu z odstępem 5px i brakiem marginesów
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)  # odstęp między widgetami ustawiony na 5 pikseli
+
+        # Etykieta z nazwą
+        self.nameLabel = QLabel(self.name)
+        self.nameLabel.setStyleSheet("margin: 0; padding: 0;")
+        layout.addWidget(self.nameLabel)
+
+        # Przycisk "Zmień nazwę"
+        self.renameButton = QPushButton()
+        self.renameButton.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
+        self.renameButton.setToolTip("Zmień nazwę")
+        self.renameButton.setIconSize(QSize(16, 16))
+        self.renameButton.setFlat(True)
+        self.renameButton.setFixedSize(20, 20)  # wymusza stały rozmiar
+        self.renameButton.setStyleSheet("background: none; border: none;")
+        layout.addWidget(self.renameButton)
+
+        # Przycisk "Otwórz"
+        self.openButton = QPushButton()
+        self.openButton.setIcon(self.style().standardIcon(QStyle.SP_DialogOpenButton))
+        self.openButton.setToolTip("Otwórz")
+        self.openButton.setIconSize(QSize(16, 16))
+        self.openButton.setFlat(True)
+        self.openButton.setFixedSize(20, 20)
+        self.openButton.setStyleSheet("background: none; border: none;")
+        layout.addWidget(self.openButton)
+
+        # Przycisk "Usuń"
+        self.deleteButton = QPushButton()
+        self.deleteButton.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self.deleteButton.setToolTip("Usuń")
+        self.deleteButton.setIconSize(QSize(16, 16))
+        self.deleteButton.setFlat(True)
+        self.deleteButton.setFixedSize(20, 20)
+        self.deleteButton.setStyleSheet("background: none; border: none;")
+        layout.addWidget(self.deleteButton)
+
+        self.setLayout(layout)
+
 class MainWindow(QWidget):
     def __init__(self, db, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -176,12 +224,6 @@ class MainWindow(QWidget):
         self.listWidget = QListWidget()
         leftLayout.addWidget(QLabel("Lista zapisanych wyrażeń:"))
         leftLayout.addWidget(self.listWidget)
-
-        # Przyciski pod listą
-        leftBtnLayout = QHBoxLayout()
-        self.deleteBtn = QPushButton("Usuń")
-        leftBtnLayout.addWidget(self.deleteBtn)
-        leftLayout.addLayout(leftBtnLayout)
 
         leftContainer = QWidget()
         leftContainer.setLayout(leftLayout)
@@ -347,16 +389,37 @@ class MainWindow(QWidget):
         self.refreshList()
 
     def refreshList(self):
-        """Odświeża listę zapisanych rekordów z bazy."""
         self.listWidget.clear()
-        # Pobieramy rekordy z bazy – metoda fetch_all_uniterms() powinna zwracać listę krotek,
-        # np. (id, name, sOp)
-        rows = self.db.fetch_all_uniterms()
-        for record in rows:
-            record_id, name, sOp = record
-            # Przykładowy format elementu listy
-            item_text = f"{name}"
-            item = QListWidgetItem(item_text)
-            # Przechowujemy id rekordu w itemie, aby można było później np. usuwać lub edytować
-            item.setData(Qt.UserRole, record_id)
-            self.listWidget.addItem(item)
+        rows = self.db.fetch_all_uniterms()  # [(id, name, sOp), ...]
+
+        for (record_id, name, sOp) in rows:
+            # 1. Tworzymy pusty QListWidgetItem
+            listItem = QListWidgetItem()
+            self.listWidget.addItem(listItem)
+
+            # 2. Tworzymy własny widget
+            itemWidget = RecordItemWidget(record_id, name)
+
+            # 3. Podpinamy sygnały przycisków do metod MainWindow
+            itemWidget.renameButton.clicked.connect(lambda _, rid=record_id: self.onRename(rid))
+            itemWidget.openButton.clicked.connect(lambda _, rid=record_id: self.onOpen(rid))
+            itemWidget.deleteButton.clicked.connect(lambda _, rid=record_id: self.onDelete(rid))
+
+            # 4. Osadzamy widget w wierszu listy
+            self.listWidget.setItemWidget(listItem, itemWidget)
+
+            # 5. (Opcjonalnie) dopasowujemy wysokość wiersza do widgetu
+            listItem.setSizeHint(itemWidget.sizeHint())
+
+    def onRename(self, record_id):
+        # np. zapytaj o nową nazwę w QInputDialog
+        # zaktualizuj w bazie (UPDATE)
+        self.refreshList()
+    
+    def onOpen(self, record_id):
+        # wczytanie do pól sA, sB, ewentualnie rysowanie, itp.
+        self.refreshList()
+    
+    def onDelete(self, record_id):
+        self.db.delete_uniterm(record_id)
+        self.refreshList()
