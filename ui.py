@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget
+    QLineEdit, QLabel, QPushButton, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
@@ -163,7 +163,7 @@ class MainWindow(QWidget):
     def __init__(self, db, parent=None):
         super(MainWindow, self).__init__(parent)
         self.db = db
-        self.setWindowTitle("Sekwencja i Zrównoleglanie - rysowanie po naciśnięciu przycisku")
+        self.setWindowTitle("Uniterm")
         self.resize(1080, 720)
 
         # GŁÓWNY layout poziomy – podział na lewą i prawą kolumnę
@@ -179,9 +179,7 @@ class MainWindow(QWidget):
 
         # Przyciski pod listą
         leftBtnLayout = QHBoxLayout()
-        self.refreshBtn = QPushButton("Odśwież")
         self.deleteBtn = QPushButton("Usuń")
-        leftBtnLayout.addWidget(self.refreshBtn)
         leftBtnLayout.addWidget(self.deleteBtn)
         leftLayout.addLayout(leftBtnLayout)
 
@@ -253,6 +251,7 @@ class MainWindow(QWidget):
         self.parButton.clicked.connect(self.drawParallel)
         self.saveButton.clicked.connect(self.onSave)
 
+
         # Styl
         self.setStyleSheet("""
             QWidget {
@@ -290,6 +289,7 @@ class MainWindow(QWidget):
         """)
         # Ustawienie głównego layoutu
         self.setLayout(mainLayout)
+        self.refreshList()
 
     def updateUnitermData(self):
         self.unitermWidget.sA = self.sAEdit.text()
@@ -326,19 +326,37 @@ class MainWindow(QWidget):
         self.unitermWidget.update()
 
     def onSave(self):
-        # Pobierz dane z pól
+        """Zapisuje rekord do bazy i odświeża listę."""
         name = self.nameEdit.text().strip()
         description = self.descEdit.text().strip()
         sA = self.sAEdit.text().strip()
         sB = self.sBEdit.text().strip()
         sOp = ";" if self.semicolonRadio.isChecked() else ","
-        # Ustal domyślną nazwę, jeśli pole puste
+
         if not name:
             name = "Brak nazwy"
-        # Wstaw rekord do bazy danych
+
         from database import DatabaseManager
         db = DatabaseManager()
         db.insert_uniterm(name, description, sA, sOp, sB)
-        # Wyczyść pola
+
+        # Wyczyść pola formularza
         self.nameEdit.clear()
         self.descEdit.clear()
+        # Odśwież listę – dzięki temu zmiany są widoczne automatycznie
+        self.refreshList()
+
+    def refreshList(self):
+        """Odświeża listę zapisanych rekordów z bazy."""
+        self.listWidget.clear()
+        # Pobieramy rekordy z bazy – metoda fetch_all_uniterms() powinna zwracać listę krotek,
+        # np. (id, name, sOp)
+        rows = self.db.fetch_all_uniterms()
+        for record in rows:
+            record_id, name, sOp = record
+            # Przykładowy format elementu listy
+            item_text = f"{name}"
+            item = QListWidgetItem(item_text)
+            # Przechowujemy id rekordu w itemie, aby można było później np. usuwać lub edytować
+            item.setData(Qt.UserRole, record_id)
+            self.listWidget.addItem(item)
