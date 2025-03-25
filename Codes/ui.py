@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
     QLineEdit, QLabel, QPushButton, QRadioButton, 
     QButtonGroup, QListWidget, QListWidgetItem, QStyle,
-    QInputDialog
+    QInputDialog, QMessageBox
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
@@ -27,8 +27,6 @@ class UnitermWidget(QWidget):
             self.drawSequence(painter)
         else:
             self.drawParallel(painter)
-
-    # ============== SEKWENCJA ==============
 
     def drawSequence(self, painter):
         """
@@ -67,20 +65,44 @@ class UnitermWidget(QWidget):
 
             self.drawOpOnVerticalLine(painter, lineX, topLine, bottomLine)
 
+    def drawSequenceWithArcLine(self):
+        # Wyświetl dialog wyboru – pierwszy czy drugi uniterm sekwencjonować?
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Wybierz uniterm",
+            "Który uniterm sekwencjonować?",
+            ["Pierwszy", "Drugi"],
+            0, False
+        )
+        if not ok:
+            return
+
+        # Ustaw tryb sekwencyjny i flagę rysowania łuku/pionowej linii
+        self.unitermWidget.mode = "sequence"
+        self.unitermWidget.showSequenceArcLine = True
+        self.unitermWidget.shouldDrawLine = False
+
+        # Na podstawie wyboru przypisz dane do widgetu rysującego
+        if choice == "Pierwszy":
+            self.unitermWidget.sA = self.sAEdit.text()
+            self.unitermWidget.sOp = ";" if self.semicolonRadio.isChecked() else ","
+            self.unitermWidget.sB = self.sBEdit.text()
+        else:  # "Drugi"
+            self.unitermWidget.sA = self.sA2Edit.text()
+            # Jeżeli masz osobne pole dla operatora drugiego unitermu:
+            self.unitermWidget.sOp = self.sOp2Edit.text() if hasattr(self, 'sOp2Edit') else ";"
+            self.unitermWidget.sB = self.sB2Edit.text()
+
+        self.unitermWidget.update()
+
     def drawBezierArc(self, painter, leftX, baselineY, width):
-        """
-        Rysuje łagodny łuk (krzywą Beziera) nad tekstem (start w leftX, end w leftX+width).
-        """
         path = QPainterPath()
         start = QPointF(leftX, baselineY)
         end = QPointF(leftX + width, baselineY)
-
         ctrl1 = QPointF(leftX + width * 0.25, baselineY - 20)
         ctrl2 = QPointF(leftX + width * 0.75, baselineY - 20)
-
         path.moveTo(start)
         path.cubicTo(ctrl1, ctrl2, end)
-
         pen = QPen(QColor("#4682B4"), 3)  # SteelBlue
         painter.setPen(pen)
         painter.drawPath(path)
@@ -100,8 +122,6 @@ class UnitermWidget(QWidget):
             segTop = topLine + i * segmentHeight
             textY = segTop + segmentHeight / 2
             painter.drawText(int(lineX + 5), int(textY), self.sOp)
-
-    # ============== RÓWNOLEGŁOŚĆ ==============
 
     def drawParallel(self, painter):
         """
@@ -257,6 +277,30 @@ class MainWindow(QWidget):
         inputLayout.addWidget(self.sBEdit)
         rightLayout.addLayout(inputLayout)
 
+        # Dodaj pola dla drugiego unitermu
+        # Panel wejściowy: sA2, operator i sB2
+        inputLayout = QHBoxLayout()
+        self.sA2Edit = QLineEdit()
+        self.sA2Edit.setPlaceholderText("Wprowadź sA")
+        self.semicolonRadio = QRadioButton(";")
+        self.commaRadio = QRadioButton(",")
+        self.operatorGroup = QButtonGroup(self)
+        self.operatorGroup.addButton(self.semicolonRadio)
+        self.operatorGroup.addButton(self.commaRadio)
+        self.semicolonRadio.setChecked(True)
+        self.sB2Edit = QLineEdit()
+        self.sB2Edit.setPlaceholderText("Wprowadź sB")
+
+        inputLayout.addWidget(QLabel("sA:"))
+        inputLayout.addWidget(self.sA2Edit)
+        inputLayout.addWidget(QLabel("Operator:"))
+        inputLayout.addWidget(self.semicolonRadio)
+        inputLayout.addWidget(self.commaRadio)
+        inputLayout.addWidget(QLabel("sB:"))
+        inputLayout.addWidget(self.sB2Edit)
+        rightLayout.addLayout(inputLayout)
+
+
         # Panel przycisków trybu rysowania
         btnLayout = QHBoxLayout()
         self.seqButton = QPushButton("Sekwencjonuj")
@@ -346,15 +390,33 @@ class MainWindow(QWidget):
         self.unitermWidget.sB = self.sBEdit.text()
 
     def drawSequenceWithArcLine(self):
-        """
-        Po naciśnięciu przycisku „Sekwencjonuj”:
-         - tryb sekwencyjny
-         - rysujemy łuk i pionową linię
-        """
+        # Wyświetl dialog wyboru – pierwszy czy drugi uniterm sekwencjonować?
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Wybierz uniterm",
+            "Który uniterm sekwencjonować?",
+            ["Pierwszy", "Drugi"],
+            0, False
+        )
+        if not ok:
+            return
+
+        # Ustaw tryb sekwencyjny i flagę rysowania łuku/pionowej linii
         self.unitermWidget.mode = "sequence"
         self.unitermWidget.showSequenceArcLine = True
-        self.unitermWidget.shouldDrawLine = False  # nie dotyczy trybu sekwencyjnego
-        self.updateUnitermData()
+        self.unitermWidget.shouldDrawLine = False
+
+        # Na podstawie wyboru przypisz dane do unitermWidget
+        if choice == "Pierwszy":
+            self.unitermWidget.sA = self.sAEdit.text()
+            self.unitermWidget.sOp = ";" if self.semicolonRadio.isChecked() else ","
+            self.unitermWidget.sB = self.sBEdit.text()
+        else:  # Drugi uniterm – zakładamy, że masz oddzielne pola dla drugiego unitermu
+            self.unitermWidget.sA = self.sA2Edit.text()
+            # Jeśli masz osobne pole na operator, np. sOp2Edit; w przeciwnym razie możesz domyślnie ustawić
+            self.unitermWidget.sOp = self.sOp2Edit.text() if hasattr(self, 'sOp2Edit') else ";"
+            self.unitermWidget.sB = self.sB2Edit.text()
+
         self.unitermWidget.update()
 
     def drawParallel(self):
@@ -413,7 +475,6 @@ class MainWindow(QWidget):
             self.listWidget.setItemWidget(listItem, itemWidget)
             listItem.setSizeHint(itemWidget.sizeHint())
 
-
     def onRename(self, record_id):
         # Zapytaj użytkownika o nową nazwę przy użyciu QInputDialog
         new_name, ok = QInputDialog.getText(self, "Zmień nazwę", "Podaj nową nazwę:")
@@ -440,3 +501,38 @@ class MainWindow(QWidget):
     def onDelete(self, record_id):
         self.db.delete_uniterm(record_id)
         self.refreshList()
+
+    def onEqualize(self):
+        # Pobierz dane drugiego unitermu
+        sA2 = self.sA2Edit.text().strip()
+        sOp2 = self.sOp2Edit.text().strip()
+        sB2 = self.sB2Edit.text().strip()
+
+        # Jeśli żadne dane nie zostały wprowadzone, wyświetl komunikat
+        if not (sA2 or sOp2 or sB2):
+            QMessageBox.information(self, "Brak danych", "Wprowadź dane drugiego unitermu.")
+            return
+
+        # Wyświetl dialog wyboru – które pole pierwszego unitermu podmienić
+        choice, ok = QInputDialog.getItem(
+            self, "Wybierz składową",
+            "Podmień komponent pierwszego unitermu:",
+            ["sA", "sOp", "sB"],
+            0, False
+        )
+        if not ok:
+            return
+
+        # Na podstawie wyboru, podmień odpowiednią składową pierwszego unitermu
+        if choice == "sA":
+            self.unitermWidget.sA = sA2
+        elif choice == "sOp":
+            self.unitermWidget.sOp = sOp2
+        elif choice == "sB":
+            self.unitermWidget.sB = sB2
+
+        # Ustaw tryb równoległy, aby rysować zaktualizowany uniterm z pionową kreską
+        self.unitermWidget.mode = "parallel"
+        self.unitermWidget.shouldDrawLine = True
+        self.updateUnitermData()  # Upewnij się, że metoda pobiera pozostałe dane
+        self.unitermWidget.update()

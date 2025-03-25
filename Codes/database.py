@@ -21,20 +21,24 @@ class DatabaseManager:
                 description TEXT,
                 sA TEXT,
                 sOp TEXT,
-                sB TEXT
+                sB TEXT,
+                sA2 TEXT,
+                sOp2 TEXT,
+                sB2 TEXT
             )
         """)
         conn.commit()
         conn.close()
 
-    def insert_uniterm(self, name, description, sA, sOp, sB):
-        """Wstawia nowy rekord do bazy."""
+    def insert_uniterm(self, name, description, sA, sOp, sB, sA2="", sOp2="", sB2=""):
+        """Wstawia nowy rekord do bazy.
+           Pola sA2, sOp2, sB2 są opcjonalne."""
         conn = self.get_connection()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO uniterm (name, description, sA, sOp, sB)
-            VALUES (?, ?, ?, ?, ?)
-        """, (name, description, sA, sOp, sB))
+            INSERT INTO uniterm (name, description, sA, sOp, sB, sA2, sOp2, sB2)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, description, sA, sOp, sB, sA2, sOp2, sB2))
         conn.commit()
         conn.close()
 
@@ -53,9 +57,9 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-
     def fetch_all_uniterms(self):
-        """Pobiera wszystkie rekordy z tabeli uniterm."""
+        """Pobiera wszystkie rekordy z tabeli uniterm.
+           Teraz rekord zwraca (id, name, description, sOp) – dodatkowe pola możesz dodać w razie potrzeby."""
         conn = self.get_connection()
         c = conn.cursor()
         c.execute("SELECT id, name, description, sOp FROM uniterm ORDER BY id DESC")
@@ -67,7 +71,7 @@ class DatabaseManager:
         """Pobiera szczegółowe dane rekordu o podanym id."""
         conn = self.get_connection()
         c = conn.cursor()
-        c.execute("SELECT name, description, sA, sOp, sB FROM uniterm WHERE id=?", (record_id,))
+        c.execute("SELECT name, description, sA, sOp, sB, sA2, sOp2, sB2 FROM uniterm WHERE id=?", (record_id,))
         row = c.fetchone()
         conn.close()
         return row
