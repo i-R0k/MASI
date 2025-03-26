@@ -1,13 +1,17 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLineEdit, QLabel, QPushButton, QRadioButton, 
-    QButtonGroup, QListWidget, QListWidgetItem, QStyle,
+    QLineEdit, QLabel, QPushButton, 
+    QListWidget, QListWidgetItem, QStyle,
     QInputDialog, QMessageBox
 )
 from PyQt5.QtGui import (
     QPainter, QPen, QFont, QColor, QPainterPath
 )
 from PyQt5.QtCore import Qt, QRectF, QPointF, QSize
+
+# Stałe operatorów
+OPERATOR_SEQUENCING = ";"
+OPERATOR_PARALLEL = ","
 
 class UnitermWidget(QWidget):
     def __init__(self, parent=None):
@@ -17,7 +21,7 @@ class UnitermWidget(QWidget):
         self.sB = ""
         self.shouldDrawLine = False      # dla trybu równoległego
         self.mode = "sequence"           # "sequence" lub "parallel"
-        self.showSequenceArcLine = False # czy w trybie sekwencyjnym rysować łuk i pionową linię
+        self.showSequenceArcLine = False # czy w trybie sekwencyjnym rysować łuk nad tekstem
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -29,71 +33,74 @@ class UnitermWidget(QWidget):
             self.drawParallel(painter)
 
     def drawSequence(self, painter):
-        """
-        Tryb sekwencyjny:
-          - Zawsze rysujemy tekst (sA, sOp, sB) w jednej linii.
-          - Jeżeli showSequenceArcLine = True, rysujemy też łuk i pionową linię.
-        """
+        # Wypełniamy tło
         painter.fillRect(self.rect(), QColor("#FAFAFA"))
 
-        lineX = 50
-        textTop = 100
-
-        # Tekst z odstępami (np. "a   ;   b")
-        combined = f"{self.sA}   {self.sOp}   {self.sB}"
-
-        painter.setFont(QFont("Segoe UI", 14))
-        rectText = painter.boundingRect(QRectF(0, 0, 9999, 9999), 0, combined)
-        textWidth = rectText.width()
-        textHeight = rectText.height()
-
-        # Rysujemy tekst
-        painter.setPen(QColor("#212121"))
-        painter.drawText(int(lineX), int(textTop + textHeight), combined)
-
-        # Jeśli showSequenceArcLine = True, rysujemy łuk i pionową linię
-        if self.showSequenceArcLine:
-            self.drawBezierArc(painter, lineX, textTop, textWidth)
-
-            # Krótsza pionowa linia zależna od rozmiaru tekstu
-            topLine = int(textTop - -120)
-            bottomLine = int(textTop + textHeight + 20)
-
-            pen = QPen(QColor("#00BCD4"), 2)
-            painter.setPen(pen)
-            painter.drawLine(QPointF(lineX, topLine), QPointF(lineX, bottomLine))
-
-            self.drawOpOnVerticalLine(painter, lineX, topLine, bottomLine)
-
-    def drawSequenceWithArcLine(self):
-        # Wyświetl dialog wyboru – pierwszy czy drugi uniterm sekwencjonować?
-        choice, ok = QInputDialog.getItem(
-            self,
-            "Wybierz uniterm",
-            "Który uniterm sekwencjonować?",
-            ["Pierwszy", "Drugi"],
-            0, False
-        )
-        if not ok:
+        # Sprawdzamy, czy wprowadzono choć jeden element unitermu
+        if not (self.sA.strip() or self.sOp.strip() or self.sB.strip()):
             return
 
-        # Ustaw tryb sekwencyjny i flagę rysowania łuku/pionowej linii
-        self.unitermWidget.mode = "sequence"
-        self.unitermWidget.showSequenceArcLine = True
-        self.unitermWidget.shouldDrawLine = False
+        # Ustawienia wstępne
+        margin = 5       # odstęp między liniami tekstu
+        padding = 20     # odstęp "góra-dół" wewnątrz obszaru
+        arcX = 50        # pozycja X, w której rysujemy krzywą
+        topY = 50        # pozycja Y startu krzywej
 
-        # Na podstawie wyboru przypisz dane do widgetu rysującego
-        if choice == "Pierwszy":
-            self.unitermWidget.sA = self.sAEdit.text()
-            self.unitermWidget.sOp = ";" if self.semicolonRadio.isChecked() else ","
-            self.unitermWidget.sB = self.sBEdit.text()
-        else:  # "Drugi"
-            self.unitermWidget.sA = self.sA2Edit.text()
-            # Jeżeli masz osobne pole dla operatora drugiego unitermu:
-            self.unitermWidget.sOp = self.sOp2Edit.text() if hasattr(self, 'sOp2Edit') else ";"
-            self.unitermWidget.sB = self.sB2Edit.text()
+        # Oblicz łączną wysokość tekstu (sA, sOp, sB)
+        measureY = 0
+        hA = self.getTextHeight(painter, self.sA)
+        if hA:
+            measureY += hA + margin
+        hOp = self.getTextHeight(painter, self.sOp)
+        if hOp:
+            measureY += hOp + margin
+        hB = self.getTextHeight(painter, self.sB)
+        if hB:
+            measureY += hB + margin
 
-        self.unitermWidget.update()
+        if measureY > 0:
+            measureY -= margin
+
+        totalTextHeight = measureY
+        lineHeight = totalTextHeight + 2 * padding
+        bottomY = topY + lineHeight
+
+        # Rysowanie krzywej (kształt nawiasu) po lewej stronie
+        path = QPainterPath()
+        start = QPointF(arcX, topY)
+        end = QPointF(arcX, bottomY)
+
+        # Punkty kontrolne przesunięte w lewo, by uzyskać łuk w lewo
+        ctrl1 = QPointF(arcX - 25, topY + lineHeight * 0.25)
+        ctrl2 = QPointF(arcX - 25, topY + lineHeight * 0.75)
+
+        path.moveTo(start)
+        path.cubicTo(ctrl1, ctrl2, end)
+
+        # Ustawiamy pióro dla krzywej – SteelBlue
+        penCurve = QPen(QColor("#4682B4"), 3)
+        painter.setPen(penCurve)
+        painter.drawPath(path)
+
+        # Ustawiamy pióro na kolor tekstu
+        painter.setPen(QColor("#212121"))
+
+        # Rysowanie tekstu pionowo, z prawej strony krzywej
+        textX = arcX + 20
+        currentY = topY + padding
+
+        if self.sA:
+            painter.drawText(textX, int(currentY + hA), self.sA)
+            currentY += hA + margin
+
+        if self.sOp:
+            painter.drawText(textX, int(currentY + hOp), self.sOp)
+            currentY += hOp + margin
+
+        if self.sB:
+            painter.drawText(textX, int(currentY + hB), self.sB)
+            currentY += hB + margin
+
 
     def drawBezierArc(self, painter, leftX, baselineY, width):
         path = QPainterPath()
@@ -107,25 +114,9 @@ class UnitermWidget(QWidget):
         painter.setPen(pen)
         painter.drawPath(path)
 
-    def drawOpOnVerticalLine(self, painter, lineX, topLine, bottomLine):
-        """
-        Rysuje operator sOp pionowo na pionowej linii.
-        """
-        segmentCount = 2
-        totalHeight = bottomLine - topLine
-        segmentHeight = totalHeight / segmentCount
-
-        painter.setPen(QColor("#212121"))
-        painter.setFont(QFont("Segoe UI", 12))
-
-        for i in range(segmentCount):
-            segTop = topLine + i * segmentHeight
-            textY = segTop + segmentHeight / 2
-            painter.drawText(int(lineX + 5), int(textY), self.sOp)
-
     def drawParallel(self, painter):
         """
-        Tryb równoległy – pionowa kreska łącząca sA, sOp, sB w pionie.
+        Tryb równoległy – rysuje pionową kreskę oraz tekst rozmieszczony pionowo.
         """
         painter.fillRect(self.rect(), QColor("#FAFAFA"))
         margin = 5
@@ -151,7 +142,6 @@ class UnitermWidget(QWidget):
             pen = QPen(QColor("#00BCD4"), 3)
             painter.setPen(pen)
             painter.drawLine(QPointF(lineX, topY), QPointF(lineX, bottomY))
-
             tickLength = 10
             painter.drawLine(QPointF(lineX - tickLength/2, topY),
                              QPointF(lineX + tickLength/2, topY))
@@ -187,27 +177,23 @@ class RecordItemWidget(QWidget):
         self.record_id = record_id
         self.name = name
 
-        # Ustawienie layoutu z odstępem 5px i brakiem marginesów
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)  # odstęp między widgetami ustawiony na 5 pikseli
+        layout.setSpacing(5)
 
-        # Etykieta z nazwą
         self.nameLabel = QLabel(self.name)
         self.nameLabel.setStyleSheet("margin: 0; padding: 0;")
         layout.addWidget(self.nameLabel)
 
-        # Przycisk "Zmień nazwę"
         self.renameButton = QPushButton()
         self.renameButton.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.renameButton.setToolTip("Zmień nazwę")
         self.renameButton.setIconSize(QSize(16, 16))
         self.renameButton.setFlat(True)
-        self.renameButton.setFixedSize(20, 20)  # wymusza stały rozmiar
+        self.renameButton.setFixedSize(20, 20)
         self.renameButton.setStyleSheet("background: none; border: none;")
         layout.addWidget(self.renameButton)
 
-        # Przycisk "Otwórz"
         self.openButton = QPushButton()
         self.openButton.setIcon(self.style().standardIcon(QStyle.SP_DialogOpenButton))
         self.openButton.setToolTip("Otwórz")
@@ -217,7 +203,6 @@ class RecordItemWidget(QWidget):
         self.openButton.setStyleSheet("background: none; border: none;")
         layout.addWidget(self.openButton)
 
-        # Przycisk "Usuń"
         self.deleteButton = QPushButton()
         self.deleteButton.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.deleteButton.setToolTip("Usuń")
@@ -236,70 +221,46 @@ class MainWindow(QWidget):
         self.setWindowTitle("Uniterm")
         self.resize(1080, 720)
 
-        # GŁÓWNY layout poziomy – podział na lewą i prawą kolumnę
+        # GŁÓWNY layout – podział na lewą i prawą kolumnę
         mainLayout = QHBoxLayout(self)
         mainLayout.setSpacing(15)
         mainLayout.setContentsMargins(20, 20, 20, 20)
 
-        # ----- Lewa kolumna: lista rekordów i przyciski "Odśwież"/"Usuń" -----
+        # Lewa kolumna: lista rekordów
         leftLayout = QVBoxLayout()
         self.listWidget = QListWidget()
         leftLayout.addWidget(QLabel("Lista zapisanych wyrażeń:"))
         leftLayout.addWidget(self.listWidget)
-
         leftContainer = QWidget()
         leftContainer.setLayout(leftLayout)
-        # Lewa kolumna ma stałą (mniejszą) szerokość
         mainLayout.addWidget(leftContainer, stretch=0)
 
-        # ----- Prawa kolumna: reszta interfejsu -----
+        # Prawa kolumna: interfejs główny
         rightLayout = QVBoxLayout()
 
-        # Panel wejściowy: sA, operator i sB
+        # Panel wejściowy: sA i sB dla pierwszego unitermu (operator stały)
         inputLayout = QHBoxLayout()
         self.sAEdit = QLineEdit()
         self.sAEdit.setPlaceholderText("Wprowadź sA")
-        self.semicolonRadio = QRadioButton(";")
-        self.commaRadio = QRadioButton(",")
-        self.operatorGroup = QButtonGroup(self)
-        self.operatorGroup.addButton(self.semicolonRadio)
-        self.operatorGroup.addButton(self.commaRadio)
-        self.semicolonRadio.setChecked(True)
         self.sBEdit = QLineEdit()
         self.sBEdit.setPlaceholderText("Wprowadź sB")
-
         inputLayout.addWidget(QLabel("sA:"))
         inputLayout.addWidget(self.sAEdit)
-        inputLayout.addWidget(QLabel("Operator:"))
-        inputLayout.addWidget(self.semicolonRadio)
-        inputLayout.addWidget(self.commaRadio)
         inputLayout.addWidget(QLabel("sB:"))
         inputLayout.addWidget(self.sBEdit)
         rightLayout.addLayout(inputLayout)
 
-        # Dodaj pola dla drugiego unitermu
-        # Panel wejściowy: sA2, operator i sB2
-        inputLayout = QHBoxLayout()
+        # Panel wejściowy: sA i sB dla drugiego unitermu
+        inputLayout2 = QHBoxLayout()
         self.sA2Edit = QLineEdit()
         self.sA2Edit.setPlaceholderText("Wprowadź sA")
-        self.semicolonRadio = QRadioButton(";")
-        self.commaRadio = QRadioButton(",")
-        self.operatorGroup = QButtonGroup(self)
-        self.operatorGroup.addButton(self.semicolonRadio)
-        self.operatorGroup.addButton(self.commaRadio)
-        self.semicolonRadio.setChecked(True)
         self.sB2Edit = QLineEdit()
         self.sB2Edit.setPlaceholderText("Wprowadź sB")
-
-        inputLayout.addWidget(QLabel("sA:"))
-        inputLayout.addWidget(self.sA2Edit)
-        inputLayout.addWidget(QLabel("Operator:"))
-        inputLayout.addWidget(self.semicolonRadio)
-        inputLayout.addWidget(self.commaRadio)
-        inputLayout.addWidget(QLabel("sB:"))
-        inputLayout.addWidget(self.sB2Edit)
-        rightLayout.addLayout(inputLayout)
-
+        inputLayout2.addWidget(QLabel("sA:"))
+        inputLayout2.addWidget(self.sA2Edit)
+        inputLayout2.addWidget(QLabel("sB:"))
+        inputLayout2.addWidget(self.sB2Edit)
+        rightLayout.addLayout(inputLayout2)
 
         # Panel przycisków trybu rysowania
         btnLayout = QHBoxLayout()
@@ -309,19 +270,18 @@ class MainWindow(QWidget):
         btnLayout.addWidget(self.parButton)
         rightLayout.addLayout(btnLayout)
 
-        # Widget rysujący
+        # Widget rysujący uniterm
         self.unitermWidget = UnitermWidget(self)
         self.unitermWidget.setMinimumHeight(400)
         rightLayout.addWidget(self.unitermWidget)
 
-        # Dolny pasek: pola "Nazwa" i "Opis" oraz przycisk "Zapisz"
+        # Dolny pasek: pola "Nazwa", "Opis" oraz przycisk "Zapisz"
         bottomLayout = QHBoxLayout()
         self.nameEdit = QLineEdit()
         self.nameEdit.setPlaceholderText("Nazwa")
         self.descEdit = QLineEdit()
         self.descEdit.setPlaceholderText("Opis")
         self.saveButton = QPushButton("Zapisz")
-
         bottomLayout.addWidget(QLabel("Nazwa:"))
         bottomLayout.addWidget(self.nameEdit)
         bottomLayout.addWidget(QLabel("Opis:"))
@@ -331,16 +291,14 @@ class MainWindow(QWidget):
 
         rightContainer = QWidget()
         rightContainer.setLayout(rightLayout)
-        # Prawa kolumna zajmuje całą pozostałą przestrzeń
         mainLayout.addWidget(rightContainer, stretch=1)
         
-        # Zdarzenia
+        # Podpięcie zdarzeń
         self.seqButton.clicked.connect(self.drawSequenceWithArcLine)
-        self.parButton.clicked.connect(self.drawParallel)
+        self.parButton.clicked.connect(self.onParallel)
         self.saveButton.clicked.connect(self.onSave)
 
-
-        # Styl
+        # Stylizacja
         self.setStyleSheet("""
             QWidget {
                 background-color: #FAFAFA;
@@ -370,27 +328,19 @@ class MainWindow(QWidget):
             QPushButton:hover {
                 background-color: #4FC3F7;
             }
-            QRadioButton {
-                font-size: 14px;
-                color: #212121;
-            }
         """)
-        # Ustawienie głównego layoutu
         self.setLayout(mainLayout)
         self.refreshList()
 
     def updateUnitermData(self):
         self.unitermWidget.sA = self.sAEdit.text()
-        if self.semicolonRadio.isChecked():
-            self.unitermWidget.sOp = ";"
-        elif self.commaRadio.isChecked():
-            self.unitermWidget.sOp = ","
+        if self.unitermWidget.mode == "parallel":
+            self.unitermWidget.sOp = OPERATOR_PARALLEL
         else:
-            self.unitermWidget.sOp = ""
+            self.unitermWidget.sOp = OPERATOR_SEQUENCING
         self.unitermWidget.sB = self.sBEdit.text()
 
     def drawSequenceWithArcLine(self):
-        # Wyświetl dialog wyboru – pierwszy czy drugi uniterm sekwencjonować?
         choice, ok = QInputDialog.getItem(
             self,
             "Wybierz uniterm",
@@ -401,29 +351,24 @@ class MainWindow(QWidget):
         if not ok:
             return
 
-        # Ustaw tryb sekwencyjny i flagę rysowania łuku/pionowej linii
         self.unitermWidget.mode = "sequence"
         self.unitermWidget.showSequenceArcLine = True
         self.unitermWidget.shouldDrawLine = False
 
-        # Na podstawie wyboru przypisz dane do unitermWidget
         if choice == "Pierwszy":
             self.unitermWidget.sA = self.sAEdit.text()
-            self.unitermWidget.sOp = ";" if self.semicolonRadio.isChecked() else ","
+            self.unitermWidget.sOp = OPERATOR_SEQUENCING
             self.unitermWidget.sB = self.sBEdit.text()
-        else:  # Drugi uniterm – zakładamy, że masz oddzielne pola dla drugiego unitermu
+        else:
             self.unitermWidget.sA = self.sA2Edit.text()
-            # Jeśli masz osobne pole na operator, np. sOp2Edit; w przeciwnym razie możesz domyślnie ustawić
-            self.unitermWidget.sOp = self.sOp2Edit.text() if hasattr(self, 'sOp2Edit') else ";"
+            self.unitermWidget.sOp = OPERATOR_SEQUENCING
             self.unitermWidget.sB = self.sB2Edit.text()
 
         self.unitermWidget.update()
 
     def drawParallel(self):
         """
-        Po naciśnięciu „Zrównolegnij”:
-         - tryb równoległy
-         - rysujemy pionową kreskę z sA, sOp, sB w pionie
+        Ustawia tryb równoległy – pobiera dane i ustawia operator na OPERATOR_PARALLEL.
         """
         self.unitermWidget.mode = "parallel"
         self.unitermWidget.showSequenceArcLine = False
@@ -432,88 +377,72 @@ class MainWindow(QWidget):
         self.unitermWidget.update()
 
     def onSave(self):
-        """Zapisuje rekord do bazy i odświeża listę."""
         name = self.nameEdit.text().strip()
         description = self.descEdit.text().strip()
         sA = self.sAEdit.text().strip()
         sB = self.sBEdit.text().strip()
-        sOp = ";" if self.semicolonRadio.isChecked() else ","
+        sOp = OPERATOR_SEQUENCING  # domyślny operator dla sekwencjonowania
+        sA2 = self.sA2Edit.text().strip()
+        sB2 = self.sB2Edit.text().strip()
+        sOp2 = OPERATOR_SEQUENCING  # domyślny operator dla drugiego unitermu
 
         if not name:
             name = "Brak nazwy"
 
         from database import DatabaseManager
         db = DatabaseManager()
-        db.insert_uniterm(name, description, sA, sOp, sB)
+        db.insert_uniterm(name, description, sA, sOp, sB, sA2)
 
-        # Wyczyść pola formularza
         self.nameEdit.clear()
         self.descEdit.clear()
-        # Odśwież listę – dzięki temu zmiany są widoczne automatycznie
         self.refreshList()
 
     def refreshList(self):
         self.listWidget.clear()
-        # Zakładamy, że fetch_all_uniterms() zwraca rekordy w formacie (id, name, description, sOp)
         rows = self.db.fetch_all_uniterms()
         for (record_id, name, description, sOp) in rows:
-            # 1. Tworzymy pusty QListWidgetItem
             listItem = QListWidgetItem()
-            # Ustaw tooltip z opisem
             listItem.setToolTip(description)
             self.listWidget.addItem(listItem)
     
-            # 2. Tworzymy nasz custom widget (RecordItemWidget) z nazwą rekordu
             itemWidget = RecordItemWidget(record_id, name)
-    
-            # 3. Podpinamy sygnały przycisków do metod MainWindow
             itemWidget.renameButton.clicked.connect(lambda _, rid=record_id: self.onRename(rid))
             itemWidget.openButton.clicked.connect(lambda _, rid=record_id: self.onOpen(rid))
             itemWidget.deleteButton.clicked.connect(lambda _, rid=record_id: self.onDelete(rid))
     
-            # 4. Ustawiamy nasz custom widget w wierszu listy
             self.listWidget.setItemWidget(listItem, itemWidget)
             listItem.setSizeHint(itemWidget.sizeHint())
 
     def onRename(self, record_id):
-        # Zapytaj użytkownika o nową nazwę przy użyciu QInputDialog
         new_name, ok = QInputDialog.getText(self, "Zmień nazwę", "Podaj nową nazwę:")
         if ok and new_name:
-            # Aktualizujemy rekord w bazie (załóżmy, że update_uniterm_name jest zaimplementowane)
             self.db.update_uniterm_name(record_id, new_name)
             self.refreshList()
 
     def onOpen(self, record_id):
-        # Pobierz rekord z bazy danych
         record = self.db.fetch_uniterm_by_id(record_id)
         if record:
-            name, description, sA, sOp, sB = record
-            # Wypełnij pola formularza
+            name, description, sA, sOp, sB, sA2, sOp2, sB2 = record
             self.nameEdit.setText(name)
             self.descEdit.setText(description)
             self.sAEdit.setText(sA)
-            if sOp == ";":
-                self.semicolonRadio.setChecked(True)
-            else:
-                self.commaRadio.setChecked(True)
             self.sBEdit.setText(sB)
+            self.sA2Edit.setText(sA2)
+            self.sB2Edit.setText(sB2)
 
     def onDelete(self, record_id):
         self.db.delete_uniterm(record_id)
         self.refreshList()
 
     def onEqualize(self):
-        # Pobierz dane drugiego unitermu
         sA2 = self.sA2Edit.text().strip()
-        sOp2 = self.sOp2Edit.text().strip()
+        sOp2 = OPERATOR_SEQUENCING
         sB2 = self.sB2Edit.text().strip()
 
-        # Jeśli żadne dane nie zostały wprowadzone, wyświetl komunikat
         if not (sA2 or sOp2 or sB2):
             QMessageBox.information(self, "Brak danych", "Wprowadź dane drugiego unitermu.")
             return
 
-        # Wyświetl dialog wyboru – które pole pierwszego unitermu podmienić
         choice, ok = QInputDialog.getItem(
             self, "Wybierz składową",
             "Podmień komponent pierwszego unitermu:",
@@ -523,7 +452,6 @@ class MainWindow(QWidget):
         if not ok:
             return
 
-        # Na podstawie wyboru, podmień odpowiednią składową pierwszego unitermu
         if choice == "sA":
             self.unitermWidget.sA = sA2
         elif choice == "sOp":
@@ -531,8 +459,30 @@ class MainWindow(QWidget):
         elif choice == "sB":
             self.unitermWidget.sB = sB2
 
-        # Ustaw tryb równoległy, aby rysować zaktualizowany uniterm z pionową kreską
         self.unitermWidget.mode = "parallel"
         self.unitermWidget.shouldDrawLine = True
-        self.updateUnitermData()  # Upewnij się, że metoda pobiera pozostałe dane
+        self.updateUnitermData()
+        self.unitermWidget.update()
+
+    def onParallel(self):
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Wybierz wyrażenie do zrównolegnienia",
+            "Wybierz wyrażenie do zrównolegnienia:",
+            ["sA", "sB"],
+            0,
+            False
+        )
+        if not ok:
+            return
+
+        self.unitermWidget.mode = "parallel"
+        self.unitermWidget.shouldDrawLine = True
+        self.unitermWidget.showSequenceArcLine = False
+
+        if choice == "sA":
+            self.unitermWidget.sA = self.sAEdit.text().strip()
+        else:
+            self.unitermWidget.sB = self.sBEdit.text().strip()
+
         self.unitermWidget.update()
