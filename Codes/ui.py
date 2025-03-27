@@ -19,6 +19,8 @@ class UnitermWidget(QWidget):
         self.sA = ""
         self.sOp = ""
         self.sB = ""
+        self.sA2 = ""
+        self.sB2 = ""
         self.shouldDrawLine = False      # dla trybu równoległego
         self.mode = "sequence"           # "sequence" lub "parallel"
         self.showSequenceArcLine = False # czy w trybie sekwencyjnym rysować łuk nad tekstem
@@ -27,7 +29,13 @@ class UnitermWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        if self.mode == "sequence":
+        if self.mode == "horizontal_left_arc":
+            # Łuk po lewej: (X, Y) ; B
+            self.drawHorizontalParallelSequence(painter, arcSide="left")
+        elif self.mode == "horizontal_right_arc":
+            # Łuk po prawej: A ; (X, Y)
+            self.drawHorizontalParallelSequence(painter, arcSide="right")
+        elif self.mode == "sequence":
             self.drawSequence(painter)
         else:
             self.drawParallel(painter)
@@ -101,23 +109,8 @@ class UnitermWidget(QWidget):
             painter.drawText(textX, int(currentY + hB), self.sB)
             currentY += hB + margin
 
-
-    def drawBezierArc(self, painter, leftX, baselineY, width):
-        path = QPainterPath()
-        start = QPointF(leftX, baselineY)
-        end = QPointF(leftX + width, baselineY)
-        ctrl1 = QPointF(leftX + width * 0.25, baselineY - 20)
-        ctrl2 = QPointF(leftX + width * 0.75, baselineY - 20)
-        path.moveTo(start)
-        path.cubicTo(ctrl1, ctrl2, end)
-        pen = QPen(QColor("#4682B4"), 3)  # SteelBlue
-        painter.setPen(pen)
-        painter.drawPath(path)
-
     def drawParallel(self, painter):
-        """
-        Tryb równoległy – rysuje pionową kreskę oraz tekst rozmieszczony pionowo.
-        """
+        # Wypełniamy tło
         painter.fillRect(self.rect(), QColor("#FAFAFA"))
         margin = 5
         padding = 20
@@ -126,11 +119,14 @@ class UnitermWidget(QWidget):
 
         measureY = 0
         hA = self.getTextHeight(painter, self.sA)
-        if hA: measureY += hA + margin
+        if hA:
+            measureY += hA + margin
         hOp = self.getTextHeight(painter, self.sOp)
-        if hOp: measureY += hOp + margin
+        if hOp:
+            measureY += hOp + margin
         hB = self.getTextHeight(painter, self.sB)
-        if hB: measureY += hB + margin
+        if hB:
+            measureY += hB + margin
 
         if measureY > 0:
             measureY -= margin
@@ -150,8 +146,7 @@ class UnitermWidget(QWidget):
 
         textStartY = topY + (lineHeight - totalTextHeight) / 2
         textX = lineX + 20
-        pen = QPen(QColor("#212121"), 3)
-        painter.setPen(pen)
+        painter.setPen(QColor("#212121"))
         currentY = textStartY
 
         if self.sA:
@@ -163,6 +158,118 @@ class UnitermWidget(QWidget):
         if self.sB:
             painter.drawText(textX, int(currentY + hB), self.sB)
             currentY += hB + margin
+    
+    def drawHorizontalParallelSequence(self, painter, arcSide):
+        """
+        Rysuje poziomy układ z kreską u góry i łukiem nad fragmentem X, Y.
+
+        arcSide = "left"  -> (X, Y) ; B
+        arcSide = "right" -> A ; (X, Y)
+        Gdzie X = sA2, Y = sB2, A = sA, B = sB
+        """
+
+        painter.fillRect(self.rect(), QColor("#FAFAFA"))
+
+        # 1. Kreska z "ptaszkami" u góry
+        penLine = QPen(QColor("#00BCD4"), 3)
+        painter.setPen(penLine)
+        topLineY = 50
+        leftX = 50
+        rightX = 350
+        painter.drawLine(QPointF(leftX, topLineY), QPointF(rightX, topLineY))
+        tickLen = 10
+        painter.drawLine(QPointF(leftX, topLineY - tickLen/2),
+                         QPointF(leftX, topLineY + tickLen/2))
+        painter.drawLine(QPointF(rightX, topLineY - tickLen/2),
+                         QPointF(rightX, topLineY + tickLen/2))
+
+        # 2. Przygotowanie tekstu
+        # X, Y -> self.sA2, self.sB2
+        # A -> self.sA
+        # B -> self.sB
+        # Wynik:
+        #  - jeśli arcSide="left":   (X, Y) ; B
+        #  - jeśli arcSide="right":  A ; (X, Y)
+
+        XcommaY = f"{self.sA2}, {self.sB2}"  # np. "X, Y"
+        baseTextY = 120
+        spacing = 10
+        painter.setFont(QFont("Segoe UI", 14))
+        painter.setPen(QColor("#212121"))
+
+        xPos = leftX
+
+        if arcSide == "left":
+            # Rysujemy "(X, Y)" po lewej z łukiem, potem "; B"
+            rectXY = painter.boundingRect(0, 0, 9999, 9999, 0, XcommaY)
+            # Rysujemy X, Y
+            painter.drawText(xPos, baseTextY, XcommaY)
+
+            # Rysujemy łuk nad "X, Y"
+            xyWidth = rectXY.width()
+            xyHeight = rectXY.height()
+            arcBaseY = baseTextY - xyHeight - 10
+            arcLeft = xPos
+            arcRight = xPos + xyWidth
+
+            arcPath = QPainterPath()
+            arcPath.moveTo(QPointF(arcLeft, arcBaseY))
+            arcPath.cubicTo(QPointF(arcLeft + xyWidth*0.25, arcBaseY - 15),
+                            QPointF(arcLeft + xyWidth*0.75, arcBaseY - 15),
+                            QPointF(arcRight, arcBaseY))
+
+            penArc = QPen(QColor("#4682B4"), 2)
+            painter.setPen(penArc)
+            painter.drawPath(arcPath)
+
+            # Przesuwamy xPos
+            xPos += xyWidth + spacing
+
+            # Teraz "; B"
+            restExpr = f"; {self.sB}"  # np. "; B"
+            painter.setPen(QColor("#212121"))
+            painter.drawText(xPos, baseTextY, restExpr)
+
+        else:
+            # arcSide == "right": rysujemy "A ;" po lewej, a (X, Y) z łukiem po prawej
+            # 1) Rysujemy "A ;"
+            leftExpr = f"{self.sA} ;"
+            rectLeft = painter.boundingRect(0, 0, 9999, 9999, 0, leftExpr)
+            painter.drawText(xPos, baseTextY, leftExpr)
+            xPos += rectLeft.width() + spacing
+
+            # 2) Rysujemy "(X, Y)" z łukiem
+            rectXY = painter.boundingRect(0, 0, 9999, 9999, 0, XcommaY)
+            painter.drawText(xPos, baseTextY, XcommaY)
+
+            # Łuk nad X, Y
+            xyWidth = rectXY.width()
+            xyHeight = rectXY.height()
+            arcBaseY = baseTextY - xyHeight - 10
+            arcLeft = xPos
+            arcRight = xPos + xyWidth
+
+            arcPath = QPainterPath()
+            arcPath.moveTo(QPointF(arcLeft, arcBaseY))
+            arcPath.cubicTo(QPointF(arcLeft + xyWidth*0.25, arcBaseY - 15),
+                            QPointF(arcLeft + xyWidth*0.75, arcBaseY - 15),
+                            QPointF(arcRight, arcBaseY))
+
+            penArc = QPen(QColor("#4682B4"), 2)
+            painter.setPen(penArc)
+            painter.drawPath(arcPath)
+
+    def drawBezierArc(self, painter, leftX, baselineY, width):
+        path = QPainterPath()
+        start = QPointF(leftX, baselineY)
+        end = QPointF(leftX + width, baselineY)
+        ctrl1 = QPointF(leftX + width * 0.25, baselineY - 20)
+        ctrl2 = QPointF(leftX + width * 0.75, baselineY - 20)
+        path.moveTo(start)
+        path.cubicTo(ctrl1, ctrl2, end)
+        pen = QPen(QColor("#4682B4"), 3)  # SteelBlue
+        painter.setPen(pen)
+        painter.drawPath(path)
 
     def getTextHeight(self, painter, text):
         if not text:
@@ -475,14 +582,28 @@ class MainWindow(QWidget):
         )
         if not ok:
             return
-
-        self.unitermWidget.mode = "parallel"
-        self.unitermWidget.shouldDrawLine = True
-        self.unitermWidget.showSequenceArcLine = False
-
+    
+        # Pobieramy teksty
+        A = self.sAEdit.text().strip()   
+        B = self.sBEdit.text().strip()   
+        X = self.sA2Edit.text().strip()  
+        Y = self.sB2Edit.text().strip()  
+    
         if choice == "sA":
-            self.unitermWidget.sA = self.sAEdit.text().strip()
+            # -> (X, Y) ; B  z łukiem nad X, Y
+            self.unitermWidget.mode = "horizontal_left_arc"
+            self.unitermWidget.sA2 = X  # "X"
+            self.unitermWidget.sB2 = Y  # "Y"
+            self.unitermWidget.sB = B   # "B"
+            # sA nie jest używane w arcSide="left"
         else:
-            self.unitermWidget.sB = self.sBEdit.text().strip()
-
+            # choice == "sB"
+            # -> A ; (X, Y)  z łukiem nad X, Y
+            self.unitermWidget.mode = "horizontal_right_arc"
+            self.unitermWidget.sA = A   # "A"
+            self.unitermWidget.sA2 = X  # "X"
+            self.unitermWidget.sB2 = Y  # "Y"
+            # sB nie jest używane w arcSide="right"
+    
         self.unitermWidget.update()
+    
