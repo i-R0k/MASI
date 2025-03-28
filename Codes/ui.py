@@ -30,11 +30,13 @@ class UnitermWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         if self.mode == "horizontal_left_arc":
-            # Łuk po lewej: (X, Y) ; B
             self.drawHorizontalParallelSequence(painter, arcSide="left")
         elif self.mode == "horizontal_right_arc":
-            # Łuk po prawej: A ; (X, Y)
             self.drawHorizontalParallelSequence(painter, arcSide="right")
+        elif self.mode == "vertical_top_arc":
+            self.drawVerticalParallelSequence(painter, arcSide="top")
+        elif self.mode == "vertical_bottom_arc":
+            self.drawVerticalParallelSequence(painter, arcSide="bottom")
         elif self.mode == "sequence":
             self.drawSequence(painter)
         else:
@@ -232,6 +234,48 @@ class UnitermWidget(QWidget):
        # Zwracamy też xBaseline, by móc wyrównać A/B do poziomu X
        return (usedWidth, usedHeight, xBaseline)
 
+    def drawHorizontalXY(self, painter, startX, startY, X, Y):
+        """
+        Rysuje w poziomie:
+           X ; Y
+        z łukiem NAD tym tekstem (wybrzuszonym do góry).
+        Zwraca używaną wysokość (by móc przesunąć się dalej w pionie).
+        """
+        if not (X.strip() or Y.strip()):
+            return 0
+
+        # Zbuduj napis "X ; Y" (możesz rozbić na 3 elementy: X, ";", Y)
+        blockText = f"{X} ; {Y}"
+
+        # Zmierz boundingRect
+        flags = Qt.AlignLeft | Qt.TextSingleLine
+        rect = painter.boundingRect(QRectF(0, 0, 1000, 200), flags, blockText)
+        textWidth = rect.width()
+        textHeight = rect.height()
+
+        # Rysujemy łuk (bezier) od startX do startX + textWidth
+        arcHeight = 20  # jak bardzo łuk ma być wybrzuszony
+        path = QPainterPath()
+        path.moveTo(startX, startY)
+        # Punkty kontrolne przesunięte w górę
+        ctrl1 = QPointF(startX + textWidth * 0.25, startY - arcHeight)
+        ctrl2 = QPointF(startX + textWidth * 0.75, startY - arcHeight)
+        end = QPointF(startX + textWidth, startY)
+        path.cubicTo(ctrl1, ctrl2, end)
+
+        penArc = QPen(QColor("#4682B4"), 3)
+        painter.setPen(penArc)
+        painter.drawPath(path)
+
+        # Rysujemy tekst POD łukiem (przesuwając w dół o textHeight)
+        painter.setPen(QColor("#212121"))
+        textY = startY + textHeight
+        painter.drawText(QRectF(startX, textY - rect.height(), textWidth + 5, rect.height()),
+                         flags, blockText)
+
+        # Łączna wysokość, jaką to zajeło, to arcHeight + textHeight
+        return arcHeight + textHeight
+    
     def drawHorizontalParallelSequence(self, painter, arcSide):
         """
         Rysuje poziomą linię (o długości wyliczonej na podstawie tekstu +10% z każdej strony)
@@ -309,6 +353,131 @@ class UnitermWidget(QWidget):
                  self.sB2
              )
              painter.drawText(int(textStartX), int(xBaseline), Asemicolon)
+
+    def drawVerticalParallelSequence(self, painter, arcSide):
+        """
+        Rysuje pionowy nawias kwadratowy (linia + wąsy) obejmujący:
+          - w środku pionowy łuk (arc) dla (X, ;, Y),
+          - ewentualnie linie u góry lub u dołu.
+
+        Zakładamy, że:
+          - arcSide == "top" oznacza "zrównolegnij sA2" -> bez A u góry
+          - arcSide == "bottom" oznacza "zrównolegnij sB2" -> ewentualnie bez A, a B poniżej itd.
+        """
+
+        painter.fillRect(self.rect(), QColor("#FAFAFA"))
+        painter.setFont(QFont("Segoe UI", 14))
+
+        # Marginesy
+        margin_line = 5   # odstęp pionowy między wierszami tekstu
+        padding_top = 20
+        bracketX = 50     # X-owa pozycja nawiasu kwadratowego
+
+        # --- arcLines: (X; Y) ---
+        arcLines = []
+        if self.sA2.strip():
+            arcLines.append(self.sA2)
+        arcLines.append(";")
+        if self.sB2.strip():
+            arcLines.append(self.sB2)
+
+        # Przygotowujemy topLines i bottomLines w zależności od arcSide
+        if arcSide == "top":
+            # Zrównolegnij sA2: nic na górze (ani A, ani przecinek),
+            # ewentualnie na dole ", B" (jeśli B jest niepuste).
+            topLines = []
+            bottomLines = []
+            if self.sB.strip():
+                bottomLines.append(",")    # przecinek w osobnej linii
+                bottomLines.append(self.sB)  # B w kolejnej linii
+        else:
+            # arcSide == "bottom" -> ZRÓWNOLEGNIJ sB2
+            #  - Na górze: A, ','
+            #  - Na dole: łuk z X;Y
+            topLines = []
+            if self.sA.strip():
+                topLines.append(self.sA)
+            topLines.append(",")
+            bottomLines = []
+
+        # Pomocnicza funkcja do mierzenia wysokości tekstu
+        def measure_height(txt):
+            if not txt.strip():
+                return 0
+            rect = painter.boundingRect(QRectF(0, 0, 400, 2000),
+                                        Qt.TextWordWrap, txt)
+            return rect.height()
+
+        # --- Mierzymy wysokości wierszy ---
+        topHeights = [measure_height(t) for t in topLines]
+        sumTop = sum(topHeights) + margin_line*(len(topLines)-1) if topLines else 0
+
+        arcHeights = [measure_height(t) for t in arcLines]
+        sumArc = sum(arcHeights) + margin_line*(len(arcLines)-1)
+
+        bottomHeights = [measure_height(t) for t in bottomLines]
+        sumBottom = sum(bottomHeights) + margin_line*(len(bottomLines)-1) if bottomLines else 0
+
+        totalHeight = padding_top + sumTop + sumArc + sumBottom + padding_top
+
+        topY = 50
+        bottomY = topY + totalHeight
+
+        # --- Rysujemy pionowy nawias kwadratowy (linia + wąsy) ---
+        penBracket = QPen(QColor("#00BCD4"), 3)
+        painter.setPen(penBracket)
+        painter.drawLine(QPointF(bracketX, topY), QPointF(bracketX, bottomY))
+
+        # Wąsy poziome (skierowane w prawo)
+        tickLen = 15
+        painter.drawLine(QPointF(bracketX, topY),
+                         QPointF(bracketX + tickLen, topY))
+        painter.drawLine(QPointF(bracketX, bottomY),
+                         QPointF(bracketX + tickLen, bottomY))
+
+        # --- Pozycje do rysowania łuku i tekstu ---
+        painter.setPen(QColor("#212121"))
+        arcX = bracketX + 30
+        textX = arcX + 20
+        currentY = topY + padding_top
+
+        # 1. Rysujemy topLines
+        for i, txt in enumerate(topLines):
+            h = topHeights[i]
+            if h > 0:
+                painter.drawText(int(textX), int(currentY + h), txt)
+                currentY += h + margin_line
+
+        if arcSide == "bottom":
+            currentY += 10 
+
+        # 2. Łuk pionowy dla (X; Y)
+        arcStartY = currentY
+        arcEndY = arcStartY + sumArc - margin_line
+        path = QPainterPath()
+        path.moveTo(QPointF(arcX, arcStartY))
+        ctrl1 = QPointF(arcX - 25, arcStartY + (arcEndY - arcStartY)*0.25)
+        ctrl2 = QPointF(arcX - 25, arcStartY + (arcEndY - arcStartY)*0.75)
+        path.cubicTo(ctrl1, ctrl2, QPointF(arcX, arcEndY))
+
+        penArc = QPen(QColor("#4682B4"), 3)
+        painter.setPen(penArc)
+        painter.drawPath(path)
+
+        # 3. Rysujemy linie (X, ";", Y) pionowo
+        painter.setPen(QColor("#212121"))
+        for i, txt in enumerate(arcLines):
+            h = arcHeights[i]
+            if h > 0:
+                painter.drawText(int(textX), int(currentY + h), txt)
+                currentY += h + margin_line
+
+        # 4. Rysujemy bottomLines
+        for i, txt in enumerate(bottomLines):
+            h = bottomHeights[i]
+            if h > 0:
+                painter.drawText(int(textX), int(currentY + h), txt)
+                currentY += h + margin_line
 
     def drawVerticalXY(self, painter, startX, startY, X, Y):
         """
@@ -688,7 +857,7 @@ class MainWindow(QWidget):
             self,
             "Wybierz wyrażenie do zrównolegnienia",
             "Wybierz wyrażenie do zrównolegnienia:",
-            ["sA2", "sB2"],
+            ["sA - poziomo", "sB - poziomo", "sA - pionowo", "sB - pionowo"],
             0,
             False
         )
@@ -701,20 +870,26 @@ class MainWindow(QWidget):
         X = self.sA2Edit.text().strip()  
         Y = self.sB2Edit.text().strip()  
 
-        if choice == "sA2":
+        if choice == "sA - poziomo":
             # -> (X, Y) ; B  z łukiem nad X, Y
             self.unitermWidget.mode = "horizontal_left_arc"
             self.unitermWidget.sA2 = X  # "X"
             self.unitermWidget.sB2 = Y  # "Y"
             self.unitermWidget.sB = B   # "B"
-            # sA nie jest używane w arcSide="left"
-        else:
-            # choice == "sB"
-            # -> A ; (X, Y)  z łukiem nad X, Y
+        elif choice == "sB - poziomo":
             self.unitermWidget.mode = "horizontal_right_arc"
             self.unitermWidget.sA = A   # "A"
             self.unitermWidget.sA2 = X  # "X"
             self.unitermWidget.sB2 = Y  # "Y"
-            # sB nie jest używane w arcSide="right"
+        elif choice == "sA - pionowo":
+            self.unitermWidget.mode = "vertical_top_arc"
+            self.unitermWidget.sA2 = X  # "X"
+            self.unitermWidget.sB2 = Y  # "Y"
+            self.unitermWidget.sB = B   # "B"
+        elif choice == "sB - pionowo":
+            self.unitermWidget.mode = "vertical_bottom_arc"
+            self.unitermWidget.sA = A   # "A"
+            self.unitermWidget.sA2 = X  # "X"
+            self.unitermWidget.sB2 = Y  # "Y"
 
         self.unitermWidget.update()
