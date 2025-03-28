@@ -20,25 +20,22 @@ class DatabaseManager:
                 name TEXT,
                 description TEXT,
                 sA TEXT,
-                sOp TEXT,
                 sB TEXT,
                 sA2 TEXT,
-                sOp2 TEXT,
                 sB2 TEXT
             )
         """)
         conn.commit()
         conn.close()
 
-    def insert_uniterm(self, name, description, sA, sOp, sB, sA2="", sOp2="", sB2=""):
-        """Wstawia nowy rekord do bazy.
-           Pola sA2, sOp2, sB2 są opcjonalne."""
+    def insert_uniterm(self, name, description, sA, sB, sA2="", sB2=""):
+        """Wstawia nowy rekord do bazy z polami: name, description, sA, sB, sA2, sB2."""
         conn = self.get_connection()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO uniterm (name, description, sA, sOp, sB, sA2, sOp2, sB2)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, description, sA, sOp, sB, sA2, sOp2, sB2))
+            INSERT INTO uniterm (name, description, sA, sB, sA2, sB2)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, description, sA, sB, sA2, sB2))
         conn.commit()
         conn.close()
 
@@ -51,6 +48,7 @@ class DatabaseManager:
         conn.close()
 
     def update_uniterm_name(self, record_id, new_name):
+        """Aktualizuje nazwę rekordu o podanym id."""
         conn = self.get_connection()
         c = conn.cursor()
         c.execute("UPDATE uniterm SET name=? WHERE id=?", (new_name, record_id))
@@ -58,20 +56,25 @@ class DatabaseManager:
         conn.close()
 
     def fetch_all_uniterms(self):
-        """Pobiera wszystkie rekordy z tabeli uniterm.
-           Teraz rekord zwraca (id, name, description, sOp) – dodatkowe pola możesz dodać w razie potrzeby."""
+        """
+        Pobiera wszystkie rekordy z tabeli uniterm.
+        Zwracamy (id, name, description).
+        """
         conn = self.get_connection()
         c = conn.cursor()
-        c.execute("SELECT id, name, description, sOp FROM uniterm ORDER BY id DESC")
+        c.execute("SELECT id, name, description FROM uniterm ORDER BY id DESC")
         rows = c.fetchall()
         conn.close()
         return rows
 
     def fetch_uniterm_by_id(self, record_id):
-        """Pobiera szczegółowe dane rekordu o podanym id."""
+        """
+        Pobiera szczegółowe dane rekordu o podanym id.
+        Zwracamy (name, description, sA, sB, sA2, sB2).
+        """
         conn = self.get_connection()
         c = conn.cursor()
-        c.execute("SELECT name, description, sA, sOp, sB, sA2, sOp2, sB2 FROM uniterm WHERE id=?", (record_id,))
+        c.execute("SELECT name, description, sA, sB, sA2, sB2 FROM uniterm WHERE id=?", (record_id,))
         row = c.fetchone()
         conn.close()
         return row

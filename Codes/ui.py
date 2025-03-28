@@ -159,105 +159,206 @@ class UnitermWidget(QWidget):
             painter.drawText(textX, int(currentY + hB), self.sB)
             currentY += hB + margin
     
+    def drawVerticalXY(self, painter, startX, startY, X, Y):
+       """
+       Rysuje pionowo:
+          X
+          ;
+          Y
+       z łukiem z lewej strony (jak w drawSequence).
+       Zwraca (usedWidth, usedHeight, xBaseline),
+       gdzie xBaseline to Y-owa baza rysowania X (przyda się do wyrównania A lub B).
+       """
+
+       margin = 5
+       padding = 20
+
+       # Wysokości tekstów
+       hX = self.getTextHeight(painter, X)
+       hOp = self.getTextHeight(painter, ";")
+       hY = self.getTextHeight(painter, Y)
+
+       measureY = 0
+       if hX:
+           measureY += hX + margin
+       if hOp:
+           measureY += hOp + margin
+       if hY:
+           measureY += hY + margin
+
+       if measureY > 0:
+           measureY -= margin
+
+       lineHeight = measureY + 2 * padding
+       bottomY = startY + lineHeight
+
+       # Rysujemy łuk (nawias) z lewej
+       arcX = startX
+       path = QPainterPath()
+       path.moveTo(QPointF(arcX, startY))
+       ctrl1 = QPointF(arcX - 25, startY + lineHeight * 0.25)
+       ctrl2 = QPointF(arcX - 25, startY + lineHeight * 0.75)
+       path.cubicTo(ctrl1, ctrl2, QPointF(arcX, bottomY))
+
+       penCurve = QPen(QColor("#4682B4"), 3)
+       painter.setPen(penCurve)
+       painter.drawPath(path)
+
+       # Rysowanie tekstu pionowo, z prawej strony łuku
+       painter.setPen(QColor("#212121"))
+       textX = arcX + 20
+       currentY = startY + padding
+
+       xBaseline = currentY + hX  # Y-owa linia bazowa, gdzie narysujemy X
+
+       # X
+       if X:
+           painter.drawText(textX, int(xBaseline), X)
+           currentY += hX + margin
+
+       # operator ";"
+       if hOp:
+           painter.drawText(textX, int(currentY + hOp), ";")
+           currentY += hOp + margin
+
+       # Y
+       if Y:
+           painter.drawText(textX, int(currentY + hY), Y)
+           currentY += hY + margin
+
+       usedWidth = 20 + max(hX, hOp, hY)  # orientacyjna szerokość
+       usedHeight = lineHeight
+
+       # Zwracamy też xBaseline, by móc wyrównać A/B do poziomu X
+       return (usedWidth, usedHeight, xBaseline)
+
     def drawHorizontalParallelSequence(self, painter, arcSide):
         """
-        Rysuje poziomy układ z kreską u góry i łukiem nad fragmentem X, Y.
-
-        arcSide = "left"  -> (X, Y) ; B
-        arcSide = "right" -> A ; (X, Y)
-        Gdzie X = sA2, Y = sB2, A = sA, B = sB
+        Rysuje poziomą linię (o długości wyliczonej na podstawie tekstu +10% z każdej strony)
+        oraz zawartość:
+          - Jeśli arcSide == "left": rysujemy pionowy blok (X; Y) (gdzie X = sA2, Y = sB2) z łukiem nad nim,
+            a obok, na poziomie X, rysujemy tekst: ", B" (B = sB).
+          - Jeśli arcSide == "right": rysujemy tekst "A ," (A = sA),
+            a obok (na poziomie X) pionowy blok (X; Y) z łukiem nad nim.
         """
-
         painter.fillRect(self.rect(), QColor("#FAFAFA"))
+        painter.setFont(QFont("Segoe UI", 14))
 
-        # 1. Kreska z "ptaszkami" u góry
+        # Przygotowanie pionowego bloku: (X; Y) – wykorzystujemy znak nowej linii "\n"
+        verticalBlock = f"{self.sA2}\n;\n{self.sB2}"
+
+        # Budujemy pełny ciąg tekstowy zależnie od trybu
+        if arcSide == "left":
+            # Chcemy uzyskać: (X; Y) , B
+            fullExpr = f"{verticalBlock} , {self.sB}"
+        else:
+            # arcSide == "right": uzyskujemy: {self.sA} , {verticalBlock}
+            fullExpr = f"{self.sA} , {verticalBlock}"
+
+        # Mierzymy pełny tekst
+        flags = Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop
+        rectFull = painter.boundingRect(QRectF(0, 0, 1000, 200), flags, fullExpr)
+        fullWidth = rectFull.width()
+
+        lineWidth = int(fullWidth * 3.5)
+
+        # Ustalamy pozycję linii
+        leftX = 40
+        rightX = leftX + lineWidth
+        topLineY = 50
+
+        # Rysujemy poziomą linię
         penLine = QPen(QColor("#00BCD4"), 3)
         painter.setPen(penLine)
-        topLineY = 50
-        leftX = 50
-        rightX = 350
         painter.drawLine(QPointF(leftX, topLineY), QPointF(rightX, topLineY))
         tickLen = 10
-        painter.drawLine(QPointF(leftX, topLineY - tickLen/2),
-                         QPointF(leftX, topLineY + tickLen/2))
-        painter.drawLine(QPointF(rightX, topLineY - tickLen/2),
-                         QPointF(rightX, topLineY + tickLen/2))
+        # "Wąsy" skierowane wyłącznie w dół
+        painter.drawLine(QPointF(leftX, topLineY), QPointF(leftX, topLineY + tickLen))
+        painter.drawLine(QPointF(rightX, topLineY), QPointF(rightX, topLineY + tickLen))
 
-        # 2. Przygotowanie tekstu
-        # X, Y -> self.sA2, self.sB2
-        # A -> self.sA
-        # B -> self.sB
-        # Wynik:
-        #  - jeśli arcSide="left":   (X, Y) ; B
-        #  - jeśli arcSide="right":  A ; (X, Y)
-
-        XcommaY = f"{self.sA2}, {self.sB2}"  # np. "X, Y"
-        baseTextY = 120
-        spacing = 10
-        painter.setFont(QFont("Segoe UI", 14))
+        # Ustalamy pozycję rysowania tekstu wewnątrz linii – 10% marginesu z lewej
+        textStartX = leftX + int(0.1 * lineWidth)
+        baseTextY = 60  # przykładowa pozycja w pionie
         painter.setPen(QColor("#212121"))
 
-        xPos = leftX
-
+        # Teraz rozbijamy tekst na dwie części, by uzyskać efekt wyrównania pionowego bloku
         if arcSide == "left":
-            # Rysujemy "(X, Y)" po lewej z łukiem, potem "; B"
-            rectXY = painter.boundingRect(0, 0, 9999, 9999, 0, XcommaY)
-            # Rysujemy X, Y
-            painter.drawText(xPos, baseTextY, XcommaY)
-
-            # Rysujemy łuk nad "X, Y"
-            xyWidth = rectXY.width()
-            xyHeight = rectXY.height()
-            arcBaseY = baseTextY - xyHeight - 10
-            arcLeft = xPos
-            arcRight = xPos + xyWidth
-
-            arcPath = QPainterPath()
-            arcPath.moveTo(QPointF(arcLeft, arcBaseY))
-            arcPath.cubicTo(QPointF(arcLeft + xyWidth*0.25, arcBaseY - 15),
-                            QPointF(arcLeft + xyWidth*0.75, arcBaseY - 15),
-                            QPointF(arcRight, arcBaseY))
-
-            penArc = QPen(QColor("#4682B4"), 2)
-            painter.setPen(penArc)
-            painter.drawPath(arcPath)
-
-            # Przesuwamy xPos
-            xPos += xyWidth + spacing
-
-            # Teraz "; B"
-            restExpr = f"; {self.sB}"  # np. "; B"
-            painter.setPen(QColor("#212121"))
-            painter.drawText(xPos, baseTextY, restExpr)
-
+            # W trybie "left" chcemy: (X; Y) , B
+            # Rysujemy pionowy blok (X; Y) i zapamiętujemy jego pozycję bazową (gdzie rysujemy X)
+            usedW, usedH, xBaseline = self.drawVerticalXY(painter, textStartX, baseTextY, self.sA2, self.sB2)
+            # Następnie, obok, rysujemy przecinek i B, wyrównane do xBaseline
+            xPos = textStartX + usedW + 20
+            painter.drawText(int(xPos), int(xBaseline), f", {self.sB}")
         else:
-            # arcSide == "right": rysujemy "A ;" po lewej, a (X, Y) z łukiem po prawej
-            # 1) Rysujemy "A ;"
-            leftExpr = f"{self.sA} ;"
-            rectLeft = painter.boundingRect(0, 0, 9999, 9999, 0, leftExpr)
-            painter.drawText(xPos, baseTextY, leftExpr)
-            xPos += rectLeft.width() + spacing
+            # arcSide == "right": chcemy: A , (X; Y)
+            # Najpierw rysujemy tekst "A ,"
+            Asemicolon = f"{self.sA} ,"
+            rectA = painter.boundingRect(QRectF(0, 0, 1000, 200), flags, Asemicolon)
+            painter.drawText(textStartX, baseTextY, Asemicolon)
+            xPos = textStartX + rectA.width() + 20
+            # Następnie rysujemy pionowy blok (X; Y)
+            self.drawVerticalXY(painter, xPos, baseTextY, self.sA2, self.sB2)
 
-            # 2) Rysujemy "(X, Y)" z łukiem
-            rectXY = painter.boundingRect(0, 0, 9999, 9999, 0, XcommaY)
-            painter.drawText(xPos, baseTextY, XcommaY)
-
-            # Łuk nad X, Y
-            xyWidth = rectXY.width()
-            xyHeight = rectXY.height()
-            arcBaseY = baseTextY - xyHeight - 10
-            arcLeft = xPos
-            arcRight = xPos + xyWidth
-
-            arcPath = QPainterPath()
-            arcPath.moveTo(QPointF(arcLeft, arcBaseY))
-            arcPath.cubicTo(QPointF(arcLeft + xyWidth*0.25, arcBaseY - 15),
-                            QPointF(arcLeft + xyWidth*0.75, arcBaseY - 15),
-                            QPointF(arcRight, arcBaseY))
-
-            penArc = QPen(QColor("#4682B4"), 2)
-            painter.setPen(penArc)
-            painter.drawPath(arcPath)
+    def drawVerticalXY(self, painter, startX, startY, X, Y):
+        """
+        Rysuje pionowo:
+             X
+             ;
+             Y
+        z łukiem po lewej stronie, tak jak w trybie sekwencyjnym.
+        Zwraca (usedWidth, usedHeight, xBaseline),
+        gdzie xBaseline to pozycja, na której rysujemy X (bazowa linia dla wyrównania).
+        """
+        margin = 5
+        padding = 20
+    
+        hX = self.getTextHeight(painter, X)
+        hOp = self.getTextHeight(painter, ";")
+        hY = self.getTextHeight(painter, Y)
+    
+        measureY = 0
+        if hX:
+            measureY += hX + margin
+        if hOp:
+            measureY += hOp + margin
+        if hY:
+            measureY += hY + margin
+        if measureY > 0:
+            measureY -= margin
+    
+        lineHeight = measureY + 2 * padding
+    
+        # Rysujemy łuk po lewej
+        arcX = startX
+        path = QPainterPath()
+        path.moveTo(QPointF(arcX, startY))
+        ctrl1 = QPointF(arcX - 25, startY + lineHeight * 0.25)
+        ctrl2 = QPointF(arcX - 25, startY + lineHeight * 0.75)
+        path.cubicTo(ctrl1, ctrl2, QPointF(arcX, startY + lineHeight))
+        penCurve = QPen(QColor("#4682B4"), 3)
+        painter.setPen(penCurve)
+        painter.drawPath(path)
+    
+        # Rysujemy pionowy blok tekstu (X, ;, Y)
+        painter.setPen(QColor("#212121"))
+        textX = arcX + 20
+        currentY = startY + padding
+    
+        # Pozycja, na której rysujemy X – to nasza linia bazowa
+        xBaseline = currentY + hX
+        if X:
+            painter.drawText(int(textX), int(xBaseline), X)
+            currentY += hX + margin
+        if hOp:
+            painter.drawText(int(textX), int(currentY + hOp), ";")
+            currentY += hOp + margin
+        if Y:
+            painter.drawText(int(textX), int(currentY + hY), Y)
+            currentY += hY + margin
+    
+        usedWidth = 20 + max(hX, hOp, hY)
+        usedHeight = lineHeight
+        return (usedWidth, usedHeight, xBaseline)
 
     def drawBezierArc(self, painter, leftX, baselineY, width):
         path = QPainterPath()
@@ -351,21 +452,21 @@ class MainWindow(QWidget):
         self.sAEdit.setPlaceholderText("Wprowadź sA")
         self.sBEdit = QLineEdit()
         self.sBEdit.setPlaceholderText("Wprowadź sB")
-        inputLayout.addWidget(QLabel("sA:"))
+        inputLayout.addWidget(QLabel("  sA:"))
         inputLayout.addWidget(self.sAEdit)
-        inputLayout.addWidget(QLabel("sB:"))
+        inputLayout.addWidget(QLabel("  sB:"))
         inputLayout.addWidget(self.sBEdit)
         rightLayout.addLayout(inputLayout)
 
         # Panel wejściowy: sA i sB dla drugiego unitermu
         inputLayout2 = QHBoxLayout()
         self.sA2Edit = QLineEdit()
-        self.sA2Edit.setPlaceholderText("Wprowadź sA")
+        self.sA2Edit.setPlaceholderText("Wprowadź sA2")
         self.sB2Edit = QLineEdit()
-        self.sB2Edit.setPlaceholderText("Wprowadź sB")
-        inputLayout2.addWidget(QLabel("sA:"))
+        self.sB2Edit.setPlaceholderText("Wprowadź sB2")
+        inputLayout2.addWidget(QLabel("sA2:"))
         inputLayout2.addWidget(self.sA2Edit)
-        inputLayout2.addWidget(QLabel("sB:"))
+        inputLayout2.addWidget(QLabel("sB2:"))
         inputLayout2.addWidget(self.sB2Edit)
         rightLayout.addLayout(inputLayout2)
 
@@ -498,7 +599,7 @@ class MainWindow(QWidget):
 
         from database import DatabaseManager
         db = DatabaseManager()
-        db.insert_uniterm(name, description, sA, sOp, sB, sA2)
+        db.insert_uniterm(name, description, sA, sB, sA2, sB2)
 
         self.nameEdit.clear()
         self.descEdit.clear()
@@ -507,7 +608,7 @@ class MainWindow(QWidget):
     def refreshList(self):
         self.listWidget.clear()
         rows = self.db.fetch_all_uniterms()
-        for (record_id, name, description, sOp) in rows:
+        for (record_id, name, description) in rows:
             listItem = QListWidgetItem()
             listItem.setToolTip(description)
             self.listWidget.addItem(listItem)
@@ -529,7 +630,7 @@ class MainWindow(QWidget):
     def onOpen(self, record_id):
         record = self.db.fetch_uniterm_by_id(record_id)
         if record:
-            name, description, sA, sOp, sB, sA2, sOp2, sB2 = record
+            name, description, sA, sB, sA2, sB2 = record
             self.nameEdit.setText(name)
             self.descEdit.setText(description)
             self.sAEdit.setText(sA)
@@ -576,20 +677,20 @@ class MainWindow(QWidget):
             self,
             "Wybierz wyrażenie do zrównolegnienia",
             "Wybierz wyrażenie do zrównolegnienia:",
-            ["sA", "sB"],
+            ["sA2", "sB2"],
             0,
             False
         )
         if not ok:
             return
-    
+
         # Pobieramy teksty
         A = self.sAEdit.text().strip()   
         B = self.sBEdit.text().strip()   
         X = self.sA2Edit.text().strip()  
         Y = self.sB2Edit.text().strip()  
-    
-        if choice == "sA":
+
+        if choice == "sA2":
             # -> (X, Y) ; B  z łukiem nad X, Y
             self.unitermWidget.mode = "horizontal_left_arc"
             self.unitermWidget.sA2 = X  # "X"
@@ -604,6 +705,5 @@ class MainWindow(QWidget):
             self.unitermWidget.sA2 = X  # "X"
             self.unitermWidget.sB2 = Y  # "Y"
             # sB nie jest używane w arcSide="right"
-    
+
         self.unitermWidget.update()
-    
