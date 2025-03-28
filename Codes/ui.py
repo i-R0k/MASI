@@ -288,16 +288,27 @@ class UnitermWidget(QWidget):
             usedW, usedH, xBaseline = self.drawVerticalXY(painter, textStartX, baseTextY, self.sA2, self.sB2)
             # Następnie, obok, rysujemy przecinek i B, wyrównane do xBaseline
             xPos = textStartX + usedW + 20
-            painter.drawText(int(xPos), int(xBaseline), f", {self.sB}")
+            painter.drawText(int(xPos), int(xBaseline), f",   {self.sB}")
         else:
-            # arcSide == "right": chcemy: A , (X; Y)
-            # Najpierw rysujemy tekst "A ,"
-            Asemicolon = f"{self.sA} ,"
-            rectA = painter.boundingRect(QRectF(0, 0, 1000, 200), flags, Asemicolon)
-            painter.drawText(textStartX, baseTextY, Asemicolon)
-            xPos = textStartX + rectA.width() + 20
-            # Następnie rysujemy pionowy blok (X; Y)
-            self.drawVerticalXY(painter, xPos, baseTextY, self.sA2, self.sB2)
+            # Chcemy: A , (X; Y)
+
+             # 1. Najpierw zmierz szerokość "A ,"
+             Asemicolon = f"{self.sA}    ,   "
+             flags = Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop
+             rectA = painter.boundingRect(QRectF(0, 0, 1000, 200), flags, Asemicolon)
+
+             # 2. Określ, gdzie zacznie się blok (X; Y) - np. z prawej strony "A ," + margines 20 px
+             xBlock = textStartX + rectA.width() + 20
+
+             # 3. Rysuj pionowy blok i pobierz xBaseline (linia bazowa, na której wypada "X")
+             usedW, usedH, xBaseline = self.drawVerticalXY(
+                 painter,
+                 xBlock,
+                 baseTextY,
+                 self.sA2,
+                 self.sB2
+             )
+             painter.drawText(int(textStartX), int(xBaseline), Asemicolon)
 
     def drawVerticalXY(self, painter, startX, startY, X, Y):
         """
